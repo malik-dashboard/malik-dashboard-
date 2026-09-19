@@ -3,121 +3,77 @@ import pandas as pd
 import io, os
 import plotly.express as px
 
-st.set_page_config(page_title="WIR Control Dashboard - QA/QC", layout="wide", page_icon="🏗️")
+st.set_page_config(page_title="Universal Dashboard", layout="wide", page_icon="📊")
 
-# --- PROFESSIONAL HEADER ---
 st.markdown("""
-<div style='text-align:center; background: linear-gradient(90deg, #0A1931 0%, #185ADB 100%); padding:18px; border-radius:12px; color:white; margin-bottom:15px'>
-<h2 style='margin:0; color:white; letter-spacing:1px'>🏗️ WIR Inspection Control Dashboard</h2>
-<p style='margin:5px 0 0 0; font-size:14px; opacity:0.9'>QA/QC Management System | Real-Time Analytics & Reporting</p>
+<div style='text-align:center; background: linear-gradient(90deg, #0A1931 0%, #185ADB 100%); padding:15px; border-radius:10px; color:white'>
+<h2 style='margin:0; color:white'>📊 Universal Data Analytics Dashboard</h2>
+<p style='margin:0; opacity:0.9'>Any Excel File | Auto Charts | Professional Report</p>
 </div>
 """, unsafe_allow_html=True)
 
-# --- FILE UPLOAD - 1 SE 100,000 FILES TAK ---
-uploaded_files = st.file_uploader("📂 Excel File(s) Upload Karo - Ek file ho ya 1000 files", type=["xlsx","xls"], accept_multiple_files=True)
+# --- Koi bhi file ---
+f = st.file_uploader("📂 Koi bhi Excel File Upload Karo - WIR, LOD, Material, Koi bhi", type=["xlsx","xls"])
 
-df = None
-if uploaded_files:
-    dfs = []
-    for f in uploaded_files:
-        try:
-            d = pd.read_excel(f)
-            d['Source_File'] = f.name
-            dfs.append(d)
-        except Exception as e:
-            st.warning(f"{f.name} read nahi hui: {e}")
-    if dfs:
-        df = pd.concat(dfs, ignore_index=True, sort=False)
-
-if df is None and os.path.exists("data.xlsx"):
-    try: df = pd.read_excel("data.xlsx")
-    except: pass
-
-if df is None:
-    st.info("👆 Upar Excel file upload karo")
+if f:
+    df = pd.read_excel(f)
+elif os.path.exists("data.xlsx"):
+    df = pd.read_excel("data.xlsx")
+else:
+    st.info("👆 Koi bhi Excel file upload karo")
     st.stop()
 
-st.markdown(f"<p style='text-align:center; color:#555'>📊 Total Records: <b>{len(df)}</b> | Files: <b>{len(uploaded_files) if uploaded_files else 1}</b> | Date: <b>{pd.Timestamp.now().strftime('%d-%m-%Y')}</b></p>", unsafe_allow_html=True)
+st.success(f"✅ File Loaded: {len(df)} Records | Columns: {len(df.columns)}")
 
-# --- COLUMN SELECTOR - HAR FILE KE LIYE ---
-all_cols = df.columns.tolist()
-def auto_guess(kws):
-    for kw in kws:
-        for c in all_cols:
-            if kw in str(c).lower():
-                return c
-    return None
-
-st.markdown("### ⚙️ Step 1: Columns Select Karo (Ek baar)")
-c1,c2,c3 = st.columns(3)
-with c1:
-    guess = auto_guess(['status','result','decision','approval']) or all_cols[0]
-    status_col = st.selectbox("STATUS Column", all_cols, index=all_cols.index(guess))
-with c2:
-    guess2 = auto_guess(['originator','engineer','created','raised','inspector','origin']) or all_cols[0]
-    orig_col = st.selectbox("ORIGINATOR / Engineer Column", all_cols, index=all_cols.index(guess2) if guess2 in all_cols else 0)
-with c3:
-    guess3 = auto_guess(['stage','step','phase','current','workflow']) or all_cols[0]
-    stage_col = st.selectbox("STAGE / Step Column", all_cols, index=all_cols.index(guess3) if guess3 in all_cols else 0)
+# Metrics
+c1,c2,c3,c4 = st.columns(4)
+c1.metric("TOTAL ROWS", len(df))
+c2.metric("TOTAL COLUMNS", len(df.columns))
+c3.metric("NUMERIC COLS", len(df.select_dtypes(include='number').columns))
+c4.metric("TEXT COLS", len(df.select_dtypes(include='object').columns))
 
 st.divider()
 
-# --- METRICS ---
-m1,m2,m3,m4 = st.columns(4)
-m1.metric("TOTAL FILES", len(uploaded_files) if uploaded_files else 1)
-m2.metric("TOTAL RECORDS", len(df))
-m3.metric("UNIQUE ORIGINATORS", df[orig_col].nunique() if orig_col else 0)
-m4.metric("STATUS TYPES", df[status_col].nunique() if status_col else 0)
+# Auto Charts for ANY data - pehle 4 text columns ke charts
+text_cols = df.select_dtypes(include=['object']).columns.tolist()[:4]
 
-# --- PROFESSIONAL CHARTS ---
-colA, colB = st.columns(2)
-with colA:
-    sc = df[status_col].astype(str).str.strip().value_counts().reset_index()
-    sc.columns=["Status","Count"]
-    fig = px.pie(sc, values="Count", names="Status", hole=0.55, color_discrete_sequence=px.colors.qualitative.Pastel)
-    fig.update_traces(textinfo='percent+label', textfont_size=12)
-    fig.update_layout(title="Status Breakdown", height=420, margin=dict(l=10,r=10,t=50,b=10))
-    st.plotly_chart(fig, use_container_width=True)
+if len(text_cols) >= 1:
+    col1, col2 = st.columns(2)
+    with col1:
+        d = df[text_cols[0]].astype(str).value_counts().head(10).reset_index()
+        d.columns=[text_cols[0], 'Count']
+        fig = px.pie(d, values='Count', names=text_cols[0], hole=0.5, title=f"{text_cols[0]} Breakdown")
+        st.plotly_chart(fig, use_container_width=True)
+    if len(text_cols) >= 2:
+        with col2:
+            d = df[text_cols[1]].astype(str).value_counts().head(15).reset_index()
+            d.columns=[text_cols[1], 'Count']
+            fig = px.bar(d, x=text_cols[1], y='Count', text='Count', title=f"{text_cols[1]} Wise", color='Count')
+            st.plotly_chart(fig, use_container_width=True)
 
-with colB:
-    wf_counts = df[status_col].astype(str).str.contains("Running|Completed", case=False, na=False)
-    # Workflow status - agar alag column nahi to status se
-    wf = df[status_col].astype(str).value_counts().reset_index().head(2)
-    wf.columns=["Status","Count"]
-    # Simple running/completed
-    wf_df = pd.DataFrame({"Workflow":["RUNNING","COMPLETED"],"Count":[int(len(df)*0.65), int(len(df)*0.35)]})
-    fig2 = px.bar(wf_df, x="Workflow", y="Count", color="Workflow", color_discrete_map={"RUNNING":"#28A745","COMPLETED":"#FFC107"}, text="Count")
-    fig2.update_layout(title="Workflow Status", height=420, showlegend=False, margin=dict(l=10,r=10,t=50,b=10))
-    st.plotly_chart(fig2, use_container_width=True)
+if len(text_cols) >= 3:
+    col3, col4 = st.columns(2)
+    with col3:
+        d = df[text_cols[2]].astype(str).value_counts().head(15).reset_index()
+        d.columns=[text_cols[2], 'Count']
+        fig = px.bar(d, x=text_cols[2], y='Count', text='Count', title=f"{text_cols[2]} Wise", color='Count')
+        st.plotly_chart(fig, use_container_width=True)
+    if len(text_cols) >= 4:
+        with col4:
+            d = df[text_cols[3]].astype(str).value_counts().head(15).reset_index()
+            d.columns=[text_cols[3], 'Count']
+            fig = px.bar(d, x=text_cols[3], y='Count', text='Count', title=f"{text_cols[3]} Wise", color='Count')
+            st.plotly_chart(fig, use_container_width=True)
 
-colC, colD = st.columns(2)
-with colC:
-    oc = df[orig_col].astype(str).value_counts().reset_index()
-    oc.columns=["Originator","Count"]
-    fig3 = px.bar(oc.head(15), x="Originator", y="Count", text="Count", color="Count", color_continuous_scale="Blues", title="Originator Wise - Top 15")
-    fig3.update_layout(height=450, xaxis_tickangle=-20, margin=dict(l=10,r=10,t=50,b=100))
-    st.plotly_chart(fig3, use_container_width=True)
+# Data preview
+st.markdown("### 📋 Data Preview")
+st.dataframe(df.head(50), use_container_width=True)
 
-with colD:
-    stg = df[stage_col].astype(str).value_counts().reset_index()
-    stg.columns=["Stage","Count"]
-    fig4 = px.bar(stg, x="Stage", y="Count", text="Count", color="Count", color_continuous_scale="Teal", title="Workflow Stage Wise")
-    fig4.update_layout(height=450, xaxis_tickangle=-20, margin=dict(l=10,r=10,t=50,b=100))
-    st.plotly_chart(fig4, use_container_width=True)
+# Download - Any file
+out = io.BytesIO()
+with pd.ExcelWriter(out, engine='openpyxl') as w:
+    df.to_excel(w, index=False, sheet_name='Original_Data')
+    for col in text_cols:
+        df[col].value_counts().reset_index().to_excel(w, index=False, sheet_name=f'Chart_{col}'[:31])
 
-# --- EXCEL DOWNLOAD WITH SAME CHARTS ---
-def make_excel():
-    out = io.BytesIO()
-    with pd.ExcelWriter(out, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Combined_Data')
-        df[status_col].value_counts().reset_index().to_excel(writer, index=False, sheet_name='Status_Chart_Data')
-        df[orig_col].value_counts().reset_index().to_excel(writer, index=False, sheet_name='Originator_Chart_Data')
-        df[stage_col].value_counts().reset_index().to_excel(writer, index=False, sheet_name='Stage_Chart_Data')
-    return out.getvalue()
-
-st.divider()
-st.download_button(f"📥 DOWNLOAD EXCEL REPORT - {len(df)} Records With Chart Data",
-                   data=make_excel(),
-                   file_name=f"WIR_Control_Report_{len(df)}_Records_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                   use_container_width=True, type="primary")
+st.download_button(f"📥 DOWNLOAD REPORT - {len(df)} Records", out.getvalue(), file_name=f"Report_{len(df)}_Records.xlsx", use_container_width=True, type="primary")
