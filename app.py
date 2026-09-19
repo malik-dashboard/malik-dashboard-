@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import io
-
+import io
 st.set_page_config(page_title="Malik Closeout Dashboard", layout="wide")
 st.title("📊 Malik Closeout Dashboard - Category Wise")
 
@@ -49,13 +49,13 @@ st.plotly_chart(fig, use_container_width=True)
 
 # --- EXCEL DOWNLOAD BUTTON ---
 st.markdown("---")
-buffer = io.BytesIO()
-with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-    df_sum.to_excel(writer, index=False, sheet_name='CLOUSEOUT SUMMARY')
+output = io.BytesIO()
+with pd.ExcelWriter(output, engine='openpyxl') as writer:
+    df_sum.to_excel(writer, index=False, sheet_name='CLOSEOUT SUMMARY')
 
 st.download_button(
     label="📥 CLOUSEOUT SUMMARY Excel me Download Karo",
-    data=buffer.getvalue(),
+    data=output.getvalue(),
     file_name="Malik_Closeout_Summary.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     use_container_width=True
