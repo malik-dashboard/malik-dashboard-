@@ -8,106 +8,98 @@ st.set_page_config(page_title="Universal Dashboard", layout="wide", page_icon="�
 st.markdown("""
 <div style='text-align:center; background: linear-gradient(90deg, #0A1931 0%, #185ADB 100%); padding:15px; border-radius:10px; color:white'>
 <h2 style='margin:0; color:white'>📊 Universal Data Analytics Dashboard</h2>
-<p style='margin:0'>Any Excel File | Auto Charts</p>
+<p style='margin:0'>Auto Header Detection | Any Excel File</p>
 </div>
 """, unsafe_allow_html=True)
+
+def smart_read(file):
+    # Try to find real header row
+    try:
+        tmp = pd.read_excel(file, header=None)
+        header_row = 0
+        for i in range(min(10, len(tmp))):
+            row = tmp.iloc[i].astype(str).str.lower()
+            # Jahan Status, WIR, Originator jaisa lafz mile wahi header hai
+            if any(x in ' '.join(row) for x in ['status','wir','origin','stage','discipline']):
+                header_row = i
+                break
+        file.seek(0)
+        df = pd.read_excel(file, header=header_row)
+        df = df.dropna(how='all').dropna(axis=1, how='all')
+        # Unnamed columns hatao
+        df = df.loc[:, ~df.columns.astype(str).str.contains('Unnamed', na=False)]
+        return df
+    except Exception as e:
+        file.seek(0)
+        return pd.read_excel(file)
 
 f = st.file_uploader("📂 Koi bhi Excel File Upload Karo", type=["xlsx","xls"])
 
 if f:
-    df = pd.read_excel(f)
+    df = smart_read(f)
 elif os.path.exists("data.xlsx"):
-    df = pd.read_excel("data.xlsx")
+    df = smart_read(open("data.xlsx","rb"))
 else:
     st.info("👆 File upload karo")
     st.stop()
 
 st.success(f"✅ Loaded: {len(df)} Records | {len(df.columns)} Columns")
+st.write("Columns Found:", list(df.columns)[:10])
 
-# Safe metrics
 c1,c2,c3,c4 = st.columns(4)
-c1.metric("TOTAL ROWS", len(df))
-c2.metric("COLUMNS", len(df.columns))
-c3.metric("TEXT COLS", len(df.select_dtypes(include='object').columns))
-c4.metric("NUMERIC", len(df.select_dtypes(include='number').columns))
+c1.metric("ROWS", len(df))
+c2.metric("COLS", len(df.columns))
+c3.metric("TEXT", len(df.select_dtypes(include='object').columns))
+c4.metric("NUM", len(df.select_dtypes(include='number').columns))
 
-st.divider()
-
-# Only important columns for chart - Unwanted_ columns hatao
-good_cols = [c for c in df.columns if 'Unnamed' not in str(c) and 'Source_File' not in str(c)]
+# Clean for charts
+good_cols = [c for c in df.columns if str(c).strip()!= '']
 text_cols = df[good_cols].select_dtypes(include=['object']).columns.tolist()
 
-# Sirf 4 best columns lo - jo zyada useful hain
-# Status, Originator jaisa kuch ho to pehle lo
-priority = ['status','originator','stage','step','phase','type','discipline','area']
+# Priority
+priority = ['status','originator','stage','discipline','type','area','system']
 sorted_cols = []
 for p in priority:
     for c in text_cols:
-        if p in c.lower() and c not in sorted_cols:
+        if p in str(c).lower() and c not in sorted_cols:
             sorted_cols.append(c)
 for c in text_cols:
     if c not in sorted_cols:
         sorted_cols.append(c)
-
 chart_cols = sorted_cols[:4]
 
-if len(chart_cols) >= 1:
+st.divider()
+
+if chart_cols:
     a,b = st.columns(2)
-    with a:
-        col = chart_cols[0]
-        vc = df[col].astype(str).str.strip().value_counts().head(8)
-        d = vc.reset_index()
-        d.columns=[col,'Count']
-        fig = px.pie(d, values='Count', names=col, hole=0.5, title=f"{col} - Top 8")
-        fig.update_traces(textinfo='percent+label')
-        st.plotly_chart(fig, use_container_width=True)
-    if len(chart_cols) >= 2:
-        with b:
-            col = chart_cols[1]
-            vc = df[col].astype(str).value_counts().head(10).reset_index()
-            vc.columns=[col,'Count']
-            fig = px.bar(vc, x='Count', y=col, orientation='h', text='Count', title=f"{col} - Top 10")
-            fig.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig, use_container_width=True)
-
-if len(chart_cols) >= 3:
-    c,dcol = st.columns(2)
-    with c:
-        col = chart_cols[2]
-        vc = df[col].astype(str).value_counts().head(10).reset_index()
+    for idx, col in enumerate(chart_cols[:2]):
+        vc = df[col].astype(str).str.strip().replace('nan','').replace('','')
+        vc = vc[vc!=''].value_counts().head(10).reset_index()
+        if len(vc)==0: continue
         vc.columns=[col,'Count']
-        fig = px.bar(vc, x='Count', y=col, orientation='h', text='Count', title=f"{col} - Top 10")
-        fig.update_layout(yaxis={'categoryorder':'total ascending'})
-        st.plotly_chart(fig, use_container_width=True)
-    if len(chart_cols) >= 4:
-        with dcol:
-            col = chart_cols[3]
-            vc = df[col].astype(str).value_counts().head(10).reset_index()
+        fig = px.pie(vc, values='Count', names=col, hole=0.5, title=f"{col} - Breakdown") if idx==0 else px.bar(vc, x='Count', y=col, orientation='h', text='Count', title=f"{col} - Top 10")
+        if idx==0:
+            fig.update_traces(textinfo='percent+label')
+        else:
+            fig.update_layout(yaxis={'categoryorder':'total ascending'})
+        (a if idx==0 else b).plotly_chart(fig, use_container_width=True)
+
+    if len(chart_cols) > 2:
+        c,d = st.columns(2)
+        for idx, col in enumerate(chart_cols[2:4]):
+            vc = df[col].astype(str).str.strip().replace('nan','').replace('','')
+            vc = vc[vc!=''].value_counts().head(10).reset_index()
+            if len(vc)==0: continue
             vc.columns=[col,'Count']
             fig = px.bar(vc, x='Count', y=col, orientation='h', text='Count', title=f"{col} - Top 10")
             fig.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig, use_container_width=True)
+            (c if idx==0 else d).plotly_chart(fig, use_container_width=True)
 
-st.markdown("### 📋 Data Preview (First 30 Rows)")
-st.dataframe(df[good_cols].head(30), use_container_width=True)
+st.markdown("### 📋 Data Preview")
+st.dataframe(df.head(30), use_container_width=True)
 
-# FIXED DOWNLOAD - Error nahi ayega
-def make_excel():
-    out = io.BytesIO()
-    try:
-        with pd.ExcelWriter(out, engine='openpyxl') as w:
-            df[good_cols].to_excel(w, index=False, sheet_name='Data')
-            for i, col in enumerate(chart_cols):
-                safe_name = f"Chart{i+1}_{col}"[:31].replace(':','').replace('/','').replace('\\','')
-                try:
-                    df[col].value_counts().reset_index().to_excel(w, index=False, sheet_name=safe_name)
-                except:
-                    pass
-    except Exception as e:
-        st.error(f"Excel error: {e}")
-        return None
-    return out.getvalue()
-
-excel_data = make_excel()
-if excel_data:
-    st.download_button(f"📥 DOWNLOAD - {len(df)} Records Excel", excel_data, file_name=f"Report_{len(df)}_Records.xlsx", use_container_width=True, type="primary")
+# Download fixed
+out = io.BytesIO()
+with pd.ExcelWriter(out, engine='openpyxl') as w:
+    df.to_excel(w, index=False, sheet_name='Data')
+st.download_button(f"📥 DOWNLOAD - {len(df)} Records", out.getvalue(), file_name=f"Report_{len(df)}.xlsx", use_container_width=True, type="primary")
