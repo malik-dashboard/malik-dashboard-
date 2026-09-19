@@ -1,119 +1,151 @@
 import streamlit as st
 import pandas as pd
 import io
-import glob
-import os
 import plotly.express as px
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 
-st.set_page_config(page_title="Malik - Auto All Files", layout="wide")
-st.title("📊 Malik - Auto Dashboard - All Files")
-st.caption("Folder me jitni files hongi, sab ka dashboard khud banega")
+st.set_page_config(page_title="Malik - WIR Dashboard", layout="wide")
 
-# --- AUTO READ ALL FILES FROM REPO ---
-# GitHub repo me jo bhi excel/csv files hongi, auto read
-all_files = glob.glob("*.xlsx") + glob.glob("*.xls") + glob.glob("*.csv") + glob.glob("data/*.xlsx") + glob.glob("data/*.csv")
+# --- PROFESSIONAL CSS ---
+st.markdown("""
+<style>
+.metric-card { background:white; padding:20px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08); border-left:5px solid #2F5597; text-align:center; }
+.metric-card h3 { color:#6c757d; font-size:12px; margin:0; }
+.metric-card h1 { color:#2F5597; font-size:28px; font-weight:bold; margin:5px 0; }
+.green { border-left-color:#28a745; } .green h1 { color:#28a745; }
+.yellow { border-left-color:#ffc107; } .yellow h1 { color:#d39e00; }
+.red { border-left-color:#dc3545; } .red h1 { color:#dc3545; }
+.blue { border-left-color:#17a2b8; } .blue h1 { color:#17a2b8; }
+</style>
+""", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("📁 Ya Yahan Se Nayi File Upload Karo (Optional)", type=["xlsx","xls","csv"])
+st.title("📊 Malik - WIR Inspection Dashboard")
+st.caption("Form L_106 - Professional Status Report")
 
-dfs = []
+uploaded_file = st.file_uploader("📁 File Upload Karo", type=["xlsx","xls","csv"])
 
-if uploaded_file:
-    # Agar user ne upload ki hai to usko lo
-    try:
-        df_up = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file, sheet_name=None)
-        if isinstance(df_up, dict): df_up = list(df_up.values())[0]
-        df_up['Source_File'] = uploaded_file.name
-        dfs.append(df_up)
-        st.success(f"Uploaded File Read: {uploaded_file.name}")
-    except Exception as e:
-        st.error(f"Upload error: {e}")
+if uploaded_file is None:
+    st.info("File upload karo - Form L wali")
+    st.stop()
 
-# Auto read all files from GitHub folder
-if all_files:
-    st.info(f"📂 Auto-Detected {len(all_files)} files in repo: {', '.join(all_files)}")
-    for f in all_files:
-        try:
-            if f.endswith('.csv'):
-                df_temp = pd.read_csv(f)
-            else:
-                df_temp = pd.read_excel(f, sheet_name=None)
-                if isinstance(df_temp, dict):
-                    df_temp = max(df_temp.values(), key=lambda x: x.shape[0])
-            df_temp['Source_File'] = os.path.basename(f)
-            dfs.append(df_temp)
-        except:
-            pass
+try:
+    df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+    df = df.dropna(how='all')
+    # Clean column names
+    df.columns = df.columns.str.strip()
+except Exception as e:
+    st.error(f"Error: {e}")
+    st.stop()
 
-# Agar koi file nahi mili to default Closeout
-if not dfs:
-    st.warning("Koi file nahi mili repo me - Default Closeout dikh raha hai. GitHub me files daalo to auto aayega")
-    df_all = pd.DataFrame({
-        'Category': ['Warranty Schedule', 'PDD', 'Spare Parts', 'O&M Manual', 'Training Schedule'],
-        'QTY': [20, 14, 11, 15, 9],
-        'Approved': [12, 8, 7, 10, 5],
-        'Under Review': [3, 2, 1, 2, 2],
-        'Pending': [5, 4, 3, 3, 2],
-        'Source_File': ['Default']*5
-    })
+st.success(f"✅ Read: {uploaded_file.name} | Total Records: {len(df)}")
+
+# --- AUTO DETECT COLUMNS from your screenshot ---
+status_col = next((c for c in df.columns if 'Status' == c or c.lower()=='status'), None)
+wf_status_col = next((c for c in df.columns if 'Workflow Status' in c), None)
+wf_stage_col = next((c for c in df.columns if 'Workflow Stage' in c), None)
+originator_col = next((c for c in df.columns if 'Originator' in c and 'Org' not in c), None)
+
+# --- METRICS ---
+total = len(df)
+approved = len(df[df[status_col].astype(str).str.contains('Approved', case=False, na=False)]) if status_col else 0
+for_auth = len(df[df[status_col].astype(str).str.contains('Authorisation', case=False, na=False)]) if status_col else 0
+running = len(df[df[wf_status_col].astype(str).str.contains('RUNNING', case=False, na=False)]) if wf_status_col else 0
+completed = len(df[df[wf_status_col].astype(str).str.contains('COMPLETED', case=False, na=False)]) if wf_status_col else 0
+revise = len(df[df[status_col].astype(str).str.contains('Revise', case=False, na=False)]) if status_col else 0
+
+c1,c2,c3,c4,c5 = st.columns(5)
+c1.markdown(f"<div class='metric-card'><h3>TOTAL WIR</h3><h1>{total}</h1></div>", unsafe_allow_html=True)
+c2.markdown(f"<div class='metric-card green'><h3>APPROVED</h3><h1>{approved}</h1></div>", unsafe_allow_html=True)
+c3.markdown(f"<div class='metric-card yellow'><h3>FOR AUTHORISATION</h3><h1>{for_auth}</h1></div>", unsafe_allow_html=True)
+c4.markdown(f"<div class='metric-card blue'><h3>RUNNING</h3><h1>{running}</h1></div>", unsafe_allow_html=True)
+c5.markdown(f"<div class='metric-card red'><h3>REVISE & SUBMIT</h3><h1>{revise}</h1></div>", unsafe_allow_html=True)
+
+st.write("")
+
+# --- CHARTS ---
+left, right = st.columns(2)
+
+with left:
+    if status_col:
+        st.subheader("📈 Status Breakdown")
+        status_counts = df[status_col].value_counts().reset_index()
+        status_counts.columns = ['Status','Count']
+        fig1 = px.pie(status_counts, values='Count', names='Status', hole=0.5, template='plotly_white', color_discrete_sequence=px.colors.qualitative.Set2)
+        fig1.update_layout(height=350)
+        st.plotly_chart(fig1, use_container_width=True)
+
+with right:
+    if wf_status_col:
+        st.subheader("📊 Workflow Status")
+        wf_counts = df[wf_status_col].value_counts().reset_index()
+        wf_counts.columns = ['Workflow','Count']
+        fig2 = px.bar(wf_counts, x='Workflow', y='Count', color='Workflow', template='plotly_white', color_discrete_sequence=['#28a745','#ffc107','#dc3545'])
+        fig2.update_layout(height=350, showlegend=False)
+        st.plotly_chart(fig2, use_container_width=True)
+
+col3, col4 = st.columns(2)
+with col3:
+    if originator_col:
+        st.subheader("👷 Originator Wise")
+        orig_counts = df[originator_col].value_counts().head(10).reset_index()
+        orig_counts.columns = ['Originator','Count']
+        fig3 = px.bar(orig_counts, x='Originator', y='Count', template='plotly_white', color_discrete_sequence=['#2F5597'])
+        st.plotly_chart(fig3, use_container_width=True)
+
+with col4:
+    if wf_stage_col:
+        st.subheader("🏗️ Workflow Stage")
+        stage_counts = df[wf_stage_col].value_counts().reset_index()
+        stage_counts.columns = ['Stage','Count']
+        fig4 = px.bar(stage_counts, x='Stage', y='Count', template='plotly_white', color_discrete_sequence=['#17a2b8'])
+        st.plotly_chart(fig4, use_container_width=True)
+
+# --- TABLE WITH FILTER ---
+st.subheader("📋 Detail Data - 55 Records")
+# Filter
+if status_col:
+    filter_status = st.multiselect(f"Filter by {status_col}", options=df[status_col].dropna().unique(), default=df[status_col].dropna().unique())
+    df_filtered = df[df[status_col].isin(filter_status)]
 else:
-    # Sab files ko ek saath jodo agar same columns hain to
-    try:
-        # Common columns wali files ko combine karo
-        df_all = pd.concat(dfs, ignore_index=True, sort=False)
-    except:
-        df_all = dfs[0] # Agar combine nahi ho rahi to pehli dikhao
+    df_filtered = df
 
-st.subheader(f"📋 All Files Data - Total {len(df_all)} Records")
-st.dataframe(df_all, use_container_width=True, height=400)
+st.dataframe(df_filtered, use_container_width=True, height=400)
 
-# --- AUTO DASHBOARD - All Files Ka ---
-num_cols = df_all.select_dtypes(include='number').columns.tolist()
-obj_cols = df_all.select_dtypes(include='object').columns.tolist()
-obj_cols = [c for c in obj_cols if c!= 'Source_File']
-
-if num_cols:
-    st.subheader("📊 All Files - Auto Summary")
-    c = st.columns(min(len(num_cols), 4))
-    for i, col_name in enumerate(num_cols[:4]):
-        with c[i]:
-            st.metric(col_name, f"{int(df_all[col_name].sum())}")
-
-if obj_cols and num_cols:
-    try:
-        st.subheader("📈 All Files - Combined Chart")
-        # Source_File se color karo taake pata chale kaunsi file se hai
-        fig = px.bar(df_all.head(50), x=obj_cols[0], y=num_cols[0], color='Source_File' if 'Source_File' in df_all.columns else None, barmode='group', template='plotly_white')
-        fig.update_layout(height=400, xaxis_tickangle=-30)
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.write(e)
-
-# File-wise count
-if 'Source_File' in df_all.columns:
-    st.subheader("📂 Files Breakdown")
-    st.dataframe(df_all['Source_File'].value_counts(), use_container_width=True)
-
-# --- EXCEL - All Files Ka ---
-def make_all_excel():
+# --- PROFESSIONAL EXCEL ---
+def make_excel():
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_all.to_excel(writer, index=False, sheet_name='ALL_FILES_REPORT', startrow=1)
-        ws = writer.sheets['ALL_FILES_REPORT']
+        df_filtered.to_excel(writer, index=False, sheet_name='WIR_REPORT', startrow=1)
+        ws = writer.sheets['WIR_REPORT']
         hdr_fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
         hdr_font = Font(bold=True, color="FFFFFF", size=11)
+        green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+        red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+        yellow_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
         border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-        center = Alignment(horizontal='center', vertical='center')
-        for col in range(1, len(df_all.columns)+1):
-            cell = ws.cell(row=2, column=col)
-            cell.fill = hdr_fill; cell.font = hdr_font; cell.border = border; cell.alignment = center
-        for i in range(1, len(df_all.columns)+1):
+        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        
+        for col in range(1, len(df_filtered.columns)+1):
+            c = ws.cell(row=2, column=col)
+            c.fill = hdr_fill; c.font = hdr_font; c.border = border; c.alignment = center
+        
+        # Color by Status
+        if status_col and status_col in df_filtered.columns:
+            status_idx = list(df_filtered.columns).index(status_col) + 1
+            for r in range(3, 3+len(df_filtered)):
+                val = str(ws.cell(row=r, column=status_idx).value).lower()
+                for cc in range(1, len(df_filtered.columns)+1):
+                    cell = ws.cell(row=r, column=cc)
+                    cell.border = border
+                    cell.alignment = center
+                    if 'approved' in val: cell.fill = green_fill
+                    elif 'authorisation' in val: cell.fill = yellow_fill
+                    elif 'revise' in val: cell.fill = red_fill
+        
+        for i in range(1, len(df_filtered.columns)+1):
             ws.column_dimensions[get_column_letter(i)].width = 18
     return output.getvalue()
 
 st.divider()
-st.download_button("📥 All Files Ka Professional Excel Download", make_all_excel(), "Malik_ALL_FILES_Auto_Report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-
-st.markdown("---")
-st.caption("💡 Tip: GitHub repo me jaake 'Add file' -> 'Upload files' se jitni files daloge, ye dashboard khud sab ko auto read karke dashboard bana dega. Ek baar code lagao, baar baar file upload ka jhanjhat khatam!")
+st.download_button("📥 Professional WIR Report Download", make_excel(), "Malik_WIR_Professional_Report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
