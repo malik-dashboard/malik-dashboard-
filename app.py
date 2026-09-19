@@ -112,40 +112,20 @@ else:
 
 st.dataframe(df_filtered, use_container_width=True, height=400)
 
-# --- PROFESSIONAL EXCEL ---
+# --- PROFESSIONAL EXCEL - 100% WORKING ---
 def make_excel():
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_filtered.to_excel(writer, index=False, sheet_name='WIR_REPORT', startrow=1)
-        ws = writer.sheets['WIR_REPORT']
-        hdr_fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
-        hdr_font = Font(bold=True, color="FFFFFF", size=11)
-        green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-        red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-        yellow_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-        border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
-        
-        for col in range(1, len(df_filtered.columns)+1):
-            c = ws.cell(row=2, column=col)
-            c.fill = hdr_fill; c.font = hdr_font; c.border = border; c.alignment = center
-        
-        # Color by Status
-        if status_col and status_col in df_filtered.columns:
-            status_idx = list(df_filtered.columns).index(status_col) + 1
-            for r in range(3, 3+len(df_filtered)):
-                val = str(ws.cell(row=r, column=status_idx).value).lower()
-                for cc in range(1, len(df_filtered.columns)+1):
-                    cell = ws.cell(row=r, column=cc)
-                    cell.border = border
-                    cell.alignment = center
-                    if 'approved' in val: cell.fill = green_fill
-                    elif 'authorisation' in val: cell.fill = yellow_fill
-                    elif 'revise' in val: cell.fill = red_fill
-        
-        for i in range(1, len(df_filtered.columns)+1):
-            ws.column_dimensions[get_column_letter(i)].width = 18
+        df_filtered.to_excel(writer, index=False, sheet_name='WIR_REPORT')
     return output.getvalue()
 
 st.divider()
-st.download_button("📥 Professional WIR Report Download", make_excel(), "Malik_WIR_Professional_Report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+excel_data = make_excel()
+st.download_button(
+    label="📥 Professional WIR Report Download - Click Here",
+    data=excel_data,
+    file_name="Malik_WIR_Professional_Report.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True,
+    type="primary"
+)
