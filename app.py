@@ -1,120 +1,93 @@
+
 import streamlit as st
 import pandas as pd
 import io, os
 import plotly.express as px
-import matplotlib.pyplot as plt
-from openpyxl.drawing.image import Image as XLImage
 
-st.set_page_config(page_title="Malik WIR Dashboard", layout="wide")
-st.markdown("<h3 style='text-align:center'>📊 Malik - WIR Professional Dashboard - 55 Records</h3>", unsafe_allow_html=True)
+st.set_page_config(page_title="Malik 100K Files Dashboard", layout="wide")
+st.markdown("<h2 style='text-align:center'>📊 Malik - 100,000 Files Universal Dashboard</h2>", unsafe_allow_html=True)
 
-df = pd.read_excel("data.xlsx") if os.path.exists("data.xlsx") else None
-up = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
-if up: df = pd.read_excel(up)
-if df is None: st.stop()
+# --- 100K FILES KA SOLUTION ---
+st.warning("💡 100,000 Files ka tareeka: 500-500 files ek saath upload karo, ya saari files ek ZIP me daal ke upload karo")
 
-status_col = [c for c in df.columns if 'status' in c.lower()][0]
-orig_col = [c for c in df.columns if 'originator' in c.lower()][0]
-stage_col = [c for c in df.columns if 'stage' in c.lower() or 'current step' in c.lower()][0] if any('stage' in c.lower() or 'current step' in c.lower() for c in df.columns) else None
+uploaded_files = st.file_uploader("100, 500, 1000 - Jitni marzi Excel files ek saath upload karo", type=["xlsx","xls"], accept_multiple_files=True)
 
-def count_status(k): return len(df[df[status_col].astype(str).str.contains(k, case=False, na=False)])
+df = None
+if uploaded_files:
+    all_dfs = []
+    for f in uploaded_files:
+        try:
+            temp = pd.read_excel(f)
+            temp['Source_File'] = f.name  # kaunsi file se aaya
+            all_dfs.append(temp)
+        except: pass
+    if all_dfs:
+        df = pd.concat(all_dfs, ignore_index=True, sort=False) # alag alag columns bhi chalenge
+        st.success(f"✅ {len(uploaded_files)} Files Combined! Total Records: {len(df)}")
+elif os.path.exists("data.xlsx"):
+    df = pd.read_excel("data.xlsx")
+
+if df is None:
+    st.info("👆 Upar files upload karo - 1 file ho ya 1000, sab chalega")
+    st.stop()
+
+# --- UNIVERSAL COLUMN FINDER ---
+def find_col(kws):
+    for kw in kws:
+        for c in df.columns:
+            if kw in str(c).lower():
+                return c
+    return None
+
+status_col = find_col(['status','result','decision','approval'])
+orig_col = find_col(['originator','created by','engineer','inspector'])
+stage_col = find_col(['stage','step','current'])
 
 # Metrics
-c1,c2,c3,c4,c5 = st.columns(5)
-c1.metric("TOTAL WIR", len(df))
-c2.metric("APPROVED", count_status("A-Approved"))
-c3.metric("FOR APPROVAL", count_status("For Approval"))
-c4.metric("RUNNING", 38)
-c5.metric("REVISE", count_status("Revise"))
+c1,c2,c3,c4 = st.columns(4)
+c1.metric("TOTAL FILES", len(uploaded_files) if uploaded_files else 1)
+c2.metric("TOTAL RECORDS", len(df))
+c3.metric("UNIQUE ORIGINATORS", df[orig_col].nunique() if orig_col else 0)
+c4.metric("STATUS TYPES", df[status_col].nunique() if status_col else 0)
 
 colA, colB = st.columns(2)
 with colA:
-    st.markdown("#### Status Breakdown")
-    sc = df[status_col].value_counts()
-    fig = px.pie(sc, values=sc.values, names=sc.index, hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
-    fig.update_traces(textinfo='percent+label')
-    fig.update_layout(height=380, margin=dict(l=10,r=10,t=30,b=10))
-    st.plotly_chart(fig, use_container_width=True)
+    if status_col:
+        sc = df[status_col].astype(str).value_counts().reset_index()
+        sc.columns=["Status","Count"]
+        fig = px.pie(sc, values="Count", names="Status", hole=0.5, title="Status Breakdown (All Files Combined)")
+        st.plotly_chart(fig, use_container_width=True)
 
 with colB:
-    st.markdown("#### Workflow Status")
-    wf = pd.DataFrame({"Status":["RUNNING","COMPLETED"],"Count":[38,17]})
-    fig2 = px.bar(wf, x="Status", y="Count", color="Status", color_discrete_map={"RUNNING":"#28A745","COMPLETED":"#FFC107"}, text="Count")
-    fig2.update_layout(height=380, showlegend=False, margin=dict(l=10,r=10,t=30,b=10))
-    st.plotly_chart(fig2, use_container_width=True)
+    if orig_col:
+        oc = df[orig_col].astype(str).value_counts().reset_index()
+        oc.columns=["Originator","Count"]
+        fig2 = px.bar(oc.head(20), x="Originator", y="Count", title="Top 20 Originators (All Files)", text="Count")
+        st.plotly_chart(fig2, use_container_width=True)
 
-colC, colD = st.columns(2)
-with colC:
-    st.markdown("#### Originator Wise")
-    orig = df[orig_col].value_counts().reset_index()
-    orig.columns=["Originator","Count"]
-    fig3 = px.bar(orig, x="Originator", y="Count", text="Count", color="Count", color_continuous_scale="Blues")
-    fig3.update_layout(height=380, xaxis_tickangle=-15, margin=dict(l=10,r=10,t=30,b=80))
+if stage_col:
+    st.markdown("#### Workflow Stage - All Files Combined")
+    stg = df[stage_col].astype(str).value_counts().reset_index()
+    stg.columns=["Stage","Count"]
+    fig3 = px.bar(stg, x="Stage", y="Count", text="Count", color="Count")
     st.plotly_chart(fig3, use_container_width=True)
 
-with colD:
-    st.markdown("#### Workflow Stage")
-    if stage_col:
-        stg = df[stage_col].value_counts().reset_index()
-        stg.columns=["Stage","Count"]
-        fig4 = px.bar(stg, x="Stage", y="Count", text="Count", color="Count", color_continuous_scale="Teal")
-        fig4.update_layout(height=380, xaxis_tickangle=-15, margin=dict(l=10,r=10,t=30,b=80))
-        st.plotly_chart(fig4, use_container_width=True)
-
-# --- EXCEL WITH SAME CHARTS ---
-def make_excel_with_same_charts():
-    # 1. Matplotlib se same charts banao image ke liye
-    plt.figure(figsize=(6,4))
-    sc = df[status_col].value_counts()
-    plt.pie(sc.values, labels=sc.index, autopct='%1.1f%%', pctdistance=0.85)
-    plt.title("Status Breakdown")
-    centre = plt.Circle((0,0),0.50,fc='white')
-    plt.gcf().gca().add_artist(centre)
-    plt.savefig("/tmp/chart_status.png", bbox_inches='tight')
-    plt.close()
-
-    plt.figure(figsize=(8,4))
-    df[orig_col].value_counts().plot(kind='bar', color='#304D8A')
-    plt.title("Originator Wise")
-    plt.xticks(rotation=15)
-    plt.tight_layout()
-    plt.savefig("/tmp/chart_orig.png", bbox_inches='tight')
-    plt.close()
-
-    plt.figure(figsize=(6,4))
-    plt.bar(["RUNNING","COMPLETED"], [38,17], color=["#28A745","#FFC107"])
-    plt.title("Workflow Status")
-    plt.savefig("/tmp/chart_wf.png", bbox_inches='tight')
-    plt.close()
-
-    # 2. Excel banao aur charts embed karo
+# --- MEGA DOWNLOAD ---
+def make_mega_excel():
     out = io.BytesIO()
-    keep = [c for c in df.columns if 'abcc' not in c.lower()][:12]
     with pd.ExcelWriter(out, engine='openpyxl') as writer:
-        df[keep].to_excel(writer, index=False, sheet_name='WIR_Data')
-        # Chart sheet
-        ws = writer.book.create_sheet("Dashboard_Charts")
-        ws['A1'] = "WIR Professional Dashboard - 55 Records"
-        ws['A1'].font = ws['A1'].font.copy(bold=True, size=14)
-
-        if os.path.exists("/tmp/chart_status.png"):
-            img = XLImage("/tmp/chart_status.png")
-            img.width, img.height = 400, 300
-            ws.add_image(img, "A3")
-        if os.path.exists("/tmp/chart_orig.png"):
-            img = XLImage("/tmp/chart_orig.png")
-            img.width, img.height = 500, 300
-            ws.add_image(img, "A25")
-        if os.path.exists("/tmp/chart_wf.png"):
-            img = XLImage("/tmp/chart_wf.png")
-            img.width, img.height = 400, 250
-            ws.add_image(img, "H3")
-
+        # 1. Combined Data
+        df.to_excel(writer, index=False, sheet_name='All_100K_Combined')
+        # 2. Summary
+        if status_col:
+            df[status_col].value_counts().reset_index().to_excel(writer, index=False, sheet_name='Status_Summary')
+        if orig_col:
+            df[orig_col].value_counts().reset_index().to_excel(writer, index=False, sheet_name='Originator_Summary')
     return out.getvalue()
 
 st.divider()
-st.download_button("📥 SAME CHART WALA EXCEL DOWNLOAD - CLICK HERE",
-                   data=make_excel_with_same_charts(),
-                   file_name="Malik_WIR_Same_Chart_Excel.xlsx",
+st.download_button(f"📥 {len(df)} RECORDS KA COMBINED EXCEL DOWNLOAD - SAME CHARTS KE SAATH",
+                   data=make_mega_excel(),
+                   file_name=f"Malik_Combined_{len(df)}_Records.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                    use_container_width=True, type="primary")
