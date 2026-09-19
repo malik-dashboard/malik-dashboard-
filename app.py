@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-import io, os
+import io
+
 import plotly.express as px
 
 from openpyxl import load_workbook
@@ -9,6 +10,10 @@ from openpyxl.chart import BarChart, DoughnutChart, Reference
 from openpyxl.chart.label import DataLabelList
 from openpyxl.utils import get_column_letter
 
+
+# =========================================================
+# PAGE SETTINGS
+# =========================================================
 
 st.set_page_config(
     page_title="Universal Dashboard",
@@ -22,68 +27,82 @@ st.set_page_config(
 # =========================================================
 
 st.markdown("""
-<div style='text-align:center;
+<div style="
+text-align:center;
 background: linear-gradient(90deg, #0A1931 0%, #185ADB 100%);
 padding:15px;
 border-radius:10px;
-color:white'>
-
-<h2 style='margin:0; color:white'>
+color:white;
+">
+<h2 style="margin:0; color:white;">
 📊 Universal Dashboard - AUTO HEADER
 </h2>
-
 </div>
 """, unsafe_allow_html=True)
 
 
 # =========================================================
-# AUTO HEADER DETECTION
+# FIND BEST HEADER
 # =========================================================
 
 def find_best_header(file, sheet):
-    best_row, max_cols = 0, 0
+
+    best_row = 0
+    max_score = 0
 
     for r in range(8):
+
         try:
+
             file.seek(0)
 
-            df = pd.read_excel(
+            temp = pd.read_excel(
                 file,
                 sheet_name=sheet,
                 header=r
             )
 
-            df = df.dropna(how='all').dropna(axis=1, how='all')
+            temp = temp.dropna(how="all")
+            temp = temp.dropna(
+                axis=1,
+                how="all"
+            )
 
             cols = len([
-                c for c in df.columns
-                if 'Unnamed' not in str(c)
+                c for c in temp.columns
+                if "Unnamed" not in str(c)
             ])
 
-            col_str = ' '.join(
-                [str(c).lower() for c in df.columns]
+            col_str = " ".join(
+                str(c).lower()
+                for c in temp.columns
             )
 
             score = cols
 
+            keywords = [
+                "status",
+                "row labels",
+                "wir",
+                "system",
+                "originator",
+                "approved",
+                "form title",
+                "user ref"
+            ]
+
             if any(
-                x in col_str
-                for x in [
-                    'status',
-                    'row label',
-                    'wir',
-                    'system',
-                    'originator',
-                    'approved'
-                ]
+                word in col_str
+                for word in keywords
             ):
                 score += 10
 
-            if score > max_cols:
-                max_cols = score
+            if score > max_score:
+
+                max_score = score
                 best_row = r
 
-        except:
+        except Exception:
             pass
 
     return best_row
@@ -102,6 +121,10 @@ if not f:
     st.stop()
 
 
+# =========================================================
+# SHEET SELECT
+# =========================================================
+
 xls = pd.ExcelFile(f)
 
 sheet = st.selectbox(
@@ -111,10 +134,13 @@ sheet = st.selectbox(
 
 
 # =========================================================
-# HEADER DETECT
+# AUTO HEADER
 # =========================================================
 
-auto_header = find_best_header(f, sheet)
+auto_header = find_best_header(
+    f,
+    sheet
+)
 
 st.info(
     f"🤖 Auto Detected Header Row: {auto_header} "
@@ -123,11 +149,16 @@ st.info(
 
 header_row = st.number_input(
     "Header Row Number",
-    0,
-    10,
-    value=auto_header
+    min_value=0,
+    max_value=10,
+    value=auto_header,
+    step=1
 )
 
+
+# =========================================================
+# READ EXCEL
+# =========================================================
 
 f.seek(0)
 
@@ -137,45 +168,61 @@ df = pd.read_excel(
     header=header_row
 )
 
-df = df.dropna(how='all')
 
+# =========================================================
+# CLEAN DATA
+# =========================================================
 
-# Remove unnamed columns
-df = df.loc[
-    :,
-    ~df.columns.astype(str).str.contains(
-        '^Unnamed',
-        na=False,
-        regex=True
-    )
+df = df.dropna(how="all")
+
+# Remove Unnamed columns
+valid_columns = [
+    c for c in df.columns
+    if not str(c).strip().lower().startswith("unnamed")
 ]
 
+if valid_columns:
+    df = df[valid_columns]
+
 
 # =========================================================
-# FALLBACK HEADER
+# FALLBACK HEADER DETECTION
 # =========================================================
 
-if len(df.columns) == 0 or len(df.columns) < 2:
+if len(df.columns) < 2:
 
     for r in range(8):
 
-        f.seek(0)
+        try:
 
-        temp = pd.read_excel(
-            f,
-            sheet_name=sheet,
-            header=r
-        )
+            f.seek(0)
 
-        temp = temp.dropna(how='all')
-        temp = temp.dropna(axis=1, how='all')
+            temp = pd.read_excel(
+                f,
+                sheet_name=sheet,
+                header=r
+            )
 
-        if len(temp.columns) >= 3:
+            temp = temp.dropna(how="all")
+            temp = temp.dropna(
+                axis=1,
+                how="all"
+            )
 
-            df = temp
-            header_row = r
-            break
+            if len(temp.columns) >= 3:
 
+                df = temp
+                header_row = r
+
+                break
+
+        except Exception:
+            pass
+
+
+# =========================================================
+# LOADED MESSAGE
+# =========================================================
 
 st.success(
     f"✅ Loaded: {len(df)} Records | "
@@ -185,59 +232,139 @@ st.success(
 
 st.write(
     "Columns:",
-    list(df.columns)[:10]
+    list(df.columns)
 )
 
 
 # =========================================================
-# DASHBOARD
+# FIND STATUS COLUMN
 # =========================================================
 
-is_pivot = 'Row Labels' in df.columns
+status_col = None
+
+for c in df.columns:
+
+    clean_name = (
+        str(c)
+        .strip()
+        .lower()
+    )
+
+    if clean_name == "status":
+
+        status_col = c
+        break
 
 
 # =========================================================
-# PIVOT FILE
+# FIND COMMON COLUMNS
+# =========================================================
+
+id_col = None
+user_ref_col = None
+form_title_col = None
+originator_col = None
+
+
+for c in df.columns:
+
+    name = (
+        str(c)
+        .strip()
+        .lower()
+    )
+
+    if name in ["id", "wir", "wir id"]:
+        id_col = c
+
+    if "user ref" in name:
+        user_ref_col = c
+
+    if "form title" in name:
+        form_title_col = c
+
+    if "originator" in name:
+        originator_col = c
+
+
+# =========================================================
+# PIVOT DETECTION
+# =========================================================
+
+is_pivot = any(
+    str(c).strip().lower() == "row labels"
+    for c in df.columns
+)
+
+
+# =========================================================
+# VARIABLES FOR EXCEL EXPORT
+# =========================================================
+
+excel_chart_data = []
+
+
+# =========================================================
+# PIVOT DASHBOARD
 # =========================================================
 
 if is_pivot:
 
     df_count = df[
-        [c for c in df.columns if '.1' not in str(c)]
+        [
+            c for c in df.columns
+            if ".1" not in str(c)
+        ]
     ]
 
-    grand_col = [
+    grand_cols = [
         c for c in df_count.columns
-        if 'Grand Total' in str(c)
+        if "grand total" in str(c).lower()
     ]
 
-    grand_col = grand_col[0] if grand_col else None
+    grand_col = (
+        grand_cols[0]
+        if grand_cols
+        else None
+    )
 
-    row_col = [
+    row_cols = [
         c for c in df_count.columns
-        if 'Row Labels' in str(c)
+        if "row labels" in str(c).lower()
     ]
 
     row_col = (
-        row_col[0]
-        if row_col
+        row_cols[0]
+        if row_cols
         else df_count.columns[0]
     )
 
 
     if grand_col:
 
-        grand_idx = df_count.columns.get_loc(
-            grand_col
+        grand_idx = (
+            df_count.columns.get_loc(
+                grand_col
+            )
         )
 
         status_cols = list(
-            df_count.columns[1:grand_idx]
+            df_count.columns[
+                1:grand_idx
+            ]
         )
 
         df_data = df_count[
-            (df_count[row_col] != 'Grand Total') &
-            (df_count[row_col].notna())
+            (
+                df_count[row_col]
+                .astype(str)
+                .str.lower()
+                != "grand total"
+            )
+            &
+            (
+                df_count[row_col].notna()
+            )
         ].copy()
 
 
@@ -245,9 +372,13 @@ if is_pivot:
 
             df_data[c] = pd.to_numeric(
                 df_data[c],
-                errors='coerce'
+                errors="coerce"
             ).fillna(0)
 
+
+        # -------------------------------------------------
+        # METRICS
+        # -------------------------------------------------
 
         c1, c2, c3 = st.columns(3)
 
@@ -258,7 +389,9 @@ if is_pivot:
 
         c2.metric(
             "TOTAL WIR",
-            int(df_data[grand_col].sum())
+            int(
+                df_data[grand_col].sum()
+            )
         )
 
         c3.metric(
@@ -267,34 +400,88 @@ if is_pivot:
         )
 
 
+        # -------------------------------------------------
+        # TOP 10 SYSTEMS
+        # -------------------------------------------------
+
+        top10 = (
+            df_data
+            .sort_values(
+                grand_col,
+                ascending=False
+            )
+            .head(10)
+        )
+
+
+        # Save for Excel
+        excel_chart_data.append({
+            "type": "bar",
+            "title": "Top 10 Systems - Status Wise",
+            "category": row_col,
+            "value": grand_col,
+            "data": top10[
+                [row_col, grand_col]
+            ].copy()
+        })
+
+
+        # -------------------------------------------------
+        # STATUS TOTALS
+        # -------------------------------------------------
+
+        status_totals = []
+
+        for sc in status_cols:
+
+            total = float(
+                df_data[sc].sum()
+            )
+
+            if total > 0:
+
+                status_totals.append({
+                    "Status": str(sc),
+                    "Count": int(total)
+                })
+
+
+        status_df = pd.DataFrame(
+            status_totals
+        )
+
+
+        excel_chart_data.append({
+            "type": "donut",
+            "title": "Status Breakdown",
+            "category": "Status",
+            "value": "Count",
+            "data": status_df.copy()
+        })
+
+
+        # -------------------------------------------------
+        # DISPLAY
+        # -------------------------------------------------
+
         a, b = st.columns(2)
 
 
-        # TOP 10
         with a:
-
-            top10 = (
-                df_data
-                .sort_values(
-                    grand_col,
-                    ascending=False
-                )
-                .head(10)
-            )
 
             fig = px.bar(
                 top10,
                 x=grand_col,
                 y=row_col,
-                orientation='h',
+                orientation="h",
                 text=grand_col,
                 title="Top 10 Systems - Status Wise"
             )
 
             fig.update_layout(
                 yaxis={
-                    'categoryorder':
-                    'total ascending'
+                    "categoryorder":
+                    "total ascending"
                 }
             )
 
@@ -304,41 +491,30 @@ if is_pivot:
             )
 
 
-        # STATUS DONUT
         with b:
 
-            status_totals = [
-                {
-                    'Status': sc,
-                    'Count': int(df_data[sc].sum())
-                }
-                for sc in status_cols
-                if df_data[sc].sum() > 0
-            ]
+            if not status_df.empty:
 
-            status_df = pd.DataFrame(
-                status_totals
-            )
+                fig2 = px.pie(
+                    status_df,
+                    values="Count",
+                    names="Status",
+                    hole=0.5,
+                    title="Status Breakdown"
+                )
 
-            fig2 = px.pie(
-                status_df,
-                values='Count',
-                names='Status',
-                hole=0.5,
-                title="STATUS WISE - A vs B vs C"
-            )
+                fig2.update_traces(
+                    textinfo="percent+label"
+                )
 
-            fig2.update_traces(
-                textinfo='percent+label'
-            )
-
-            st.plotly_chart(
-                fig2,
-                use_container_width=True
-            )
+                st.plotly_chart(
+                    fig2,
+                    use_container_width=True
+                )
 
 
         final_df = df_data
+
 
     else:
 
@@ -346,19 +522,30 @@ if is_pivot:
 
 
 # =========================================================
-# NORMAL EXCEL
+# NORMAL EXCEL DASHBOARD
 # =========================================================
 
 else:
 
+    # -----------------------------------------------------
+    # TEXT COLUMNS
+    # -----------------------------------------------------
+
     text_cols = df.select_dtypes(
-        include=['object']
+        include=["object"]
     ).columns.tolist()
 
 
-    if len(text_cols) == 0 and len(df.columns) > 0:
-        text_cols = list(df.columns[:4])
+    if len(text_cols) == 0:
 
+        text_cols = list(
+            df.columns[:4]
+        )
+
+
+    # -----------------------------------------------------
+    # METRICS
+    # -----------------------------------------------------
 
     c1, c2, c3, c4 = st.columns(4)
 
@@ -381,16 +568,52 @@ else:
         "NUMERIC",
         len(
             df.select_dtypes(
-                include='number'
+                include="number"
             ).columns
         )
     )
 
 
+    # =====================================================
+    # IMPORTANT:
+    # STATUS ALWAYS FIRST
+    # =====================================================
+
+    chart_cols = []
+
+
+    # Status ko sabse pehle add karo
+    if status_col is not None:
+
+        chart_cols.append(
+            status_col
+        )
+
+
+    # Baaki columns
+    for c in text_cols:
+
+        if c == status_col:
+            continue
+
+        if c not in chart_cols:
+            chart_cols.append(c)
+
+
+    # Maximum 4 charts
+    chart_cols = chart_cols[:4]
+
+
+    # -----------------------------------------------------
+    # CHART COLUMNS
+    # -----------------------------------------------------
+
     cols = st.columns(2)
 
 
-    for i, col in enumerate(text_cols[:4]):
+    for i, col in enumerate(
+        chart_cols
+    ):
 
         try:
 
@@ -400,62 +623,104 @@ else:
                 .str.strip()
             )
 
+
             vc = vc[
                 ~vc.isin([
-                    'nan',
-                    'None',
-                    '',
-                    'NaT'
+                    "nan",
+                    "None",
+                    "",
+                    "NaT"
                 ])
             ]
 
+
             vc = (
-                vc.value_counts()
+                vc
+                .value_counts()
                 .head(10)
                 .reset_index()
             )
+
 
             if len(vc) == 0:
                 continue
 
 
             vc.columns = [
-                col,
-                'Count'
+                str(col),
+                "Count"
             ]
 
 
+            # -------------------------------------------------
+            # SAVE DATA FOR EXCEL
+            # -------------------------------------------------
+
+            if col == status_col:
+
+                excel_chart_data.append({
+                    "type": "donut",
+                    "title": "Status Breakdown",
+                    "category": str(col),
+                    "value": "Count",
+                    "data": vc.copy()
+                })
+
+            else:
+
+                excel_chart_data.append({
+                    "type": "bar",
+                    "title": f"{col} - Top 10",
+                    "category": str(col),
+                    "value": "Count",
+                    "data": vc.copy()
+                })
+
+
+            # -------------------------------------------------
+            # STREAMLIT CHART
+            # -------------------------------------------------
+
             with cols[i % 2]:
 
-                if i == 0:
+                # =============================================
+                # STATUS = DONUT
+                # =============================================
+
+                if col == status_col:
 
                     fig = px.pie(
                         vc,
-                        values='Count',
-                        names=col,
+                        values="Count",
+                        names=str(col),
                         hole=0.5,
-                        title=f"{col} - Breakdown"
+                        title="Status Breakdown"
                     )
 
                     fig.update_traces(
-                        textinfo='percent+label'
+                        textinfo="percent+label"
                     )
+
+
+                # =============================================
+                # EVERYTHING ELSE = BAR
+                # =============================================
 
                 else:
 
                     fig = px.bar(
                         vc,
-                        x='Count',
-                        y=col,
-                        orientation='h',
-                        text='Count',
+                        x="Count",
+                        y=str(col),
+                        orientation="h",
+                        text="Count",
                         title=f"{col} - Top 10"
                     )
 
                     fig.update_layout(
                         yaxis={
-                            'categoryorder':
-                            'total ascending'
+                            "categoryorder":
+                            "total ascending"
                         }
                     )
 
@@ -465,7 +730,8 @@ else:
                     use_container_width=True
                 )
 
-        except:
+
+        except Exception:
             pass
 
 
@@ -476,7 +742,9 @@ else:
 # DATA PREVIEW
 # =========================================================
 
-st.markdown("### 📋 Data Preview")
+st.markdown(
+    "### 📋 Data Preview"
+)
 
 st.dataframe(
     final_df.head(50),
@@ -485,27 +753,27 @@ st.dataframe(
 
 
 # =========================================================
-# CREATE EXCEL DASHBOARD
+# EXCEL EXPORT FUNCTION
 # =========================================================
 
 def get_excel():
 
+    # -----------------------------------------------------
+    # CREATE INITIAL EXCEL
+    # -----------------------------------------------------
+
     out = io.BytesIO()
 
 
-    # -----------------------------------------------------
-    # WRITE DATA
-    # -----------------------------------------------------
-
     with pd.ExcelWriter(
         out,
-        engine='openpyxl'
+        engine="openpyxl"
     ) as writer:
 
         final_df.to_excel(
             writer,
             index=False,
-            sheet_name='Data'
+            sheet_name="Data"
         )
 
 
@@ -513,148 +781,228 @@ def get_excel():
 
 
     # -----------------------------------------------------
-    # OPEN WORKBOOK
+    # LOAD WORKBOOK
     # -----------------------------------------------------
 
-    wb = load_workbook(out)
+    wb = load_workbook(
+        out
+    )
 
 
-    # Remove old dashboard if exists
-    if 'Dashboard' in wb.sheetnames:
-        del wb['Dashboard']
+    # Remove if already exists
 
-    if 'Summary' in wb.sheetnames:
-        del wb['Summary']
+    if "Dashboard" in wb.sheetnames:
+        del wb["Dashboard"]
 
-
-    ws_data = wb['Data']
+    if "Summary" in wb.sheetnames:
+        del wb["Summary"]
 
 
-    # -----------------------------------------------------
-    # CREATE SHEETS
-    # -----------------------------------------------------
+    # Create sheets
 
     ws_dash = wb.create_sheet(
-        'Dashboard',
+        "Dashboard",
         0
     )
 
-    ws_sum = wb.create_sheet(
-        'Summary'
+    ws_data = wb["Data"]
+
+    ws_summary = wb.create_sheet(
+        "Summary"
     )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # DASHBOARD TITLE
-    # -----------------------------------------------------
+    # =====================================================
 
-    ws_dash['A1'] = "📊 Universal Dashboard"
+    ws_dash["A1"] = (
+        "📊 Universal Dashboard"
+    )
 
-    ws_dash['A1'].font = Font(
+    ws_dash["A1"].font = Font(
         size=20,
         bold=True,
         color="FFFFFF"
     )
 
-    ws_dash['A1'].fill = PatternFill(
+    ws_dash["A1"].fill = PatternFill(
         "solid",
         fgColor="185ADB"
     )
 
-    ws_dash['A1'].alignment = Alignment(
+    ws_dash["A1"].alignment = Alignment(
         horizontal="center"
     )
 
     ws_dash.merge_cells(
-        'A1:L2'
+        "A1:L2"
     )
 
 
-    ws_dash['A4'] = "Total Records"
-    ws_dash['B4'] = len(final_df)
+    # =====================================================
+    # DASHBOARD METRICS
+    # =====================================================
 
-    ws_dash['D4'] = "Total Columns"
-    ws_dash['E4'] = len(final_df.columns)
+    ws_dash["A4"] = "Total Records"
+    ws_dash["B4"] = len(final_df)
 
+    ws_dash["D4"] = "Total Columns"
+    ws_dash["E4"] = len(final_df.columns)
 
-    # -----------------------------------------------------
-    # PIVOT DASHBOARD
-    # -----------------------------------------------------
-
-    if is_pivot and 'Grand Total' in ' '.join(
-        map(str, final_df.columns)
-    ):
-
-        grand_col = [
-            c for c in final_df.columns
-            if 'Grand Total' in str(c)
-        ]
-
-        row_col = [
-            c for c in final_df.columns
-            if 'Row Labels' in str(c)
-        ]
+    ws_dash["G4"] = "Status Column"
+    ws_dash["H4"] = (
+        str(status_col)
+        if status_col
+        else "Not Found"
+    )
 
 
-        if grand_col:
+    for cell in [
+        "A4",
+        "B4",
+        "D4",
+        "E4",
+        "G4",
+        "H4"
+    ]:
 
-            grand_col = grand_col[0]
+        ws_dash[cell].font = Font(
+            bold=True
+        )
 
-            row_col = (
-                row_col[0]
-                if row_col
-                else final_df.columns[0]
+
+    # =====================================================
+    # WRITE CHART DATA + CREATE EXCEL CHARTS
+    # =====================================================
+
+    summary_col = 1
+
+    chart_positions = [
+        "A7",
+        "J7",
+        "A25",
+        "J25"
+    ]
+
+
+    chart_number = 0
+
+
+    for item in excel_chart_data:
+
+        data_df = item["data"]
+
+
+        if data_df is None:
+            continue
+
+        if data_df.empty:
+            continue
+
+
+        title = item["title"]
+
+        category = item["category"]
+
+        value = item["value"]
+
+        chart_type = item["type"]
+
+
+        # -------------------------------------------------
+        # SUMMARY DATA
+        # -------------------------------------------------
+
+        start_col = summary_col
+
+        ws_summary.cell(
+            1,
+            start_col,
+            category
+        )
+
+        ws_summary.cell(
+            1,
+            start_col + 1,
+            value
+        )
+
+
+        for r, (_, row) in enumerate(
+            data_df.iterrows(),
+            start=2
+        ):
+
+            ws_summary.cell(
+                r,
+                start_col,
+                str(row.iloc[0])
+            )
+
+            ws_summary.cell(
+                r,
+                start_col + 1,
+                float(row.iloc[1])
             )
 
 
-            # =============================================
-            # TOP 10 SUMMARY
-            # =============================================
+        max_row = len(data_df) + 1
 
-            top10 = (
-                final_df
-                .sort_values(
-                    grand_col,
-                    ascending=False
-                )
-                .head(10)
+
+        # -------------------------------------------------
+        # CREATE DONUT
+        # -------------------------------------------------
+
+        if chart_type == "donut":
+
+            chart = DoughnutChart()
+
+            chart.title = title
+
+            chart.holeSize = 50
+
+            chart.height = 8
+            chart.width = 13
+
+
+            data = Reference(
+                ws_summary,
+                min_col=start_col + 1,
+                min_row=1,
+                max_row=max_row
+            )
+
+            labels = Reference(
+                ws_summary,
+                min_col=start_col,
+                min_row=2,
+                max_row=max_row
             )
 
 
-            start_row = 1
-
-            ws_sum.cell(
-                start_row,
-                1,
-                row_col
+            chart.add_data(
+                data,
+                titles_from_data=True
             )
 
-            ws_sum.cell(
-                start_row,
-                2,
-                "Count"
+            chart.set_categories(
+                labels
             )
 
 
-            for i, (_, row) in enumerate(
-                top10.iterrows(),
-                start=2
-            ):
+            chart.dataLabels = DataLabelList()
 
-                ws_sum.cell(
-                    i,
-                    1,
-                    str(row[row_col])
-                )
+            chart.dataLabels.showPercent = True
 
-                ws_sum.cell(
-                    i,
-                    2,
-                    float(row[grand_col])
-                )
+            chart.dataLabels.showLeaderLines = True
 
 
-            # Excel Bar Chart
+        # -------------------------------------------------
+        # CREATE BAR
+        # -------------------------------------------------
+
+        else:
 
             chart = BarChart()
 
@@ -662,341 +1010,75 @@ def get_excel():
 
             chart.style = 10
 
-            chart.title = (
-                "Top 10 Systems - Status Wise"
-            )
+            chart.title = title
 
-            chart.y_axis.title = row_col
             chart.x_axis.title = "Count"
 
+            chart.y_axis.title = category
+
+            chart.height = 8
+            chart.width = 14
+
+
             data = Reference(
-                ws_sum,
-                min_col=2,
+                ws_summary,
+                min_col=start_col + 1,
                 min_row=1,
-                max_row=11
+                max_row=max_row
             )
 
-            cats = Reference(
-                ws_sum,
-                min_col=1,
+            labels = Reference(
+                ws_summary,
+                min_col=start_col,
                 min_row=2,
-                max_row=11
+                max_row=max_row
             )
+
 
             chart.add_data(
                 data,
                 titles_from_data=True
             )
 
-            chart.set_categories(cats)
+            chart.set_categories(
+                labels
+            )
 
-            chart.height = 8
-            chart.width = 14
+
+        # -------------------------------------------------
+        # ADD CHART TO DASHBOARD
+        # -------------------------------------------------
+
+        if chart_number < len(
+            chart_positions
+        ):
 
             ws_dash.add_chart(
                 chart,
-                "A7"
-            )
-
-
-            # =============================================
-            # STATUS SUMMARY
-            # =============================================
-
-            status_cols = [
-                c for c in final_df.columns
-                if c not in [row_col, grand_col]
-            ]
-
-
-            status_cols = [
-                c for c in status_cols
-                if not str(c).startswith('.')
-            ]
-
-
-            status_start = 15
-
-            ws_sum.cell(
-                status_start,
-                1,
-                "Status"
-            )
-
-            ws_sum.cell(
-                status_start,
-                2,
-                "Count"
-            )
-
-
-            status_row = status_start + 1
-
-
-            for c in status_cols:
-
-                try:
-
-                    total = pd.to_numeric(
-                        final_df[c],
-                        errors='coerce'
-                    ).fillna(0).sum()
-
-                    if total > 0:
-
-                        ws_sum.cell(
-                            status_row,
-                            1,
-                            str(c)
-                        )
-
-                        ws_sum.cell(
-                            status_row,
-                            2,
-                            float(total)
-                        )
-
-                        status_row += 1
-
-                except:
-                    pass
-
-
-            if status_row > status_start + 1:
-
-                donut = DoughnutChart()
-
-                donut.title = (
-                    "STATUS WISE"
-                )
-
-                data = Reference(
-                    ws_sum,
-                    min_col=2,
-                    min_row=status_start,
-                    max_row=status_row - 1
-                )
-
-                labels = Reference(
-                    ws_sum,
-                    min_col=1,
-                    min_row=status_start + 1,
-                    max_row=status_row - 1
-                )
-
-                donut.add_data(
-                    data,
-                    titles_from_data=True
-                )
-
-                donut.set_categories(
-                    labels
-                )
-
-                donut.holeSize = 50
-
-                donut.height = 8
-                donut.width = 12
-
-                ws_dash.add_chart(
-                    donut,
-                    "J7"
-                )
-
-
-    # -----------------------------------------------------
-    # NORMAL EXCEL DASHBOARD
-    # -----------------------------------------------------
-
-    else:
-
-        text_cols = final_df.select_dtypes(
-            include=['object']
-        ).columns.tolist()
-
-
-        if len(text_cols) == 0:
-            text_cols = list(
-                final_df.columns[:4]
-            )
-
-
-        chart_positions = [
-            "A7",
-            "J7",
-            "A25",
-            "J25"
-        ]
-
-
-        summary_col = 1
-
-
-        for i, col in enumerate(
-            text_cols[:4]
-        ):
-
-            try:
-
-                vc = (
-                    final_df[col]
-                    .astype(str)
-                    .str.strip()
-                )
-
-                vc = vc[
-                    ~vc.isin([
-                        'nan',
-                        'None',
-                        '',
-                        'NaT'
-                    ])
+                chart_positions[
+                    chart_number
                 ]
-
-                vc = (
-                    vc.value_counts()
-                    .head(10)
-                    .reset_index()
-                )
-
-                if len(vc) == 0:
-                    continue
+            )
 
 
-                vc.columns = [
-                    str(col),
-                    'Count'
-                ]
+        chart_number += 1
+
+        summary_col += 3
 
 
-                # =========================================
-                # WRITE SUMMARY DATA
-                # =========================================
-
-                ws_sum.cell(
-                    1,
-                    summary_col,
-                    str(col)
-                )
-
-                ws_sum.cell(
-                    1,
-                    summary_col + 1,
-                    "Count"
-                )
-
-
-                for r, (_, row) in enumerate(
-                    vc.iterrows(),
-                    start=2
-                ):
-
-                    ws_sum.cell(
-                        r,
-                        summary_col,
-                        str(row[col])
-                    )
-
-                    ws_sum.cell(
-                        r,
-                        summary_col + 1,
-                        int(row['Count'])
-                    )
-
-
-                # =========================================
-                # CREATE CHART
-                # =========================================
-
-                position = chart_positions[i]
-
-
-                if i == 0:
-
-                    chart = DoughnutChart()
-
-                    chart.title = (
-                        f"{col} - Breakdown"
-                    )
-
-                    chart.holeSize = 50
-
-
-                else:
-
-                    chart = BarChart()
-
-                    chart.type = "bar"
-
-                    chart.style = 10
-
-                    chart.title = (
-                        f"{col} - Top 10"
-                    )
-
-                    chart.x_axis.title = "Count"
-                    chart.y_axis.title = str(col)
-
-
-                data = Reference(
-                    ws_sum,
-                    min_col=summary_col + 1,
-                    min_row=1,
-                    max_row=len(vc) + 1
-                )
-
-                labels = Reference(
-                    ws_sum,
-                    min_col=summary_col,
-                    min_row=2,
-                    max_row=len(vc) + 1
-                )
-
-
-                chart.add_data(
-                    data,
-                    titles_from_data=True
-                )
-
-                chart.set_categories(
-                    labels
-                )
-
-
-                if i == 0:
-
-                    chart.dataLabels = DataLabelList()
-
-                    chart.dataLabels.showPercent = True
-                    chart.dataLabels.showLeaderLines = True
-
-
-                chart.height = 8
-                chart.width = 14
-
-
-                ws_dash.add_chart(
-                    chart,
-                    position
-                )
-
-
-                summary_col += 3
-
-
-            except:
-                pass
-
-
-    # -----------------------------------------------------
+    # =====================================================
     # FORMAT DATA SHEET
-    # -----------------------------------------------------
+    # =====================================================
 
-    for ws in [ws_data, ws_sum]:
+    for ws in [
+        ws_data,
+        ws_summary
+    ]:
 
         ws.freeze_panes = "A2"
 
 
+        # Header
         for cell in ws[1]:
 
             cell.font = Font(
@@ -1015,7 +1097,6 @@ def get_excel():
 
 
         # Auto width
-
         for column_cells in ws.columns:
 
             max_length = 0
@@ -1024,18 +1105,19 @@ def get_excel():
                 column_cells[0].column
             )
 
+
             for cell in column_cells:
 
                 try:
 
-                    value_length = len(
+                    length = len(
                         str(cell.value)
                     )
 
-                    if value_length > max_length:
-                        max_length = value_length
+                    if length > max_length:
+                        max_length = length
 
-                except:
+                except Exception:
                     pass
 
 
@@ -1047,9 +1129,9 @@ def get_excel():
             )
 
 
-    # -----------------------------------------------------
-    # DASHBOARD COLUMN WIDTH
-    # -----------------------------------------------------
+    # =====================================================
+    # FORMAT DASHBOARD
+    # =====================================================
 
     for col in range(1, 14):
 
@@ -1058,9 +1140,12 @@ def get_excel():
         ].width = 14
 
 
-    # -----------------------------------------------------
-    # SAVE
-    # -----------------------------------------------------
+    ws_dash.freeze_panes = "A6"
+
+
+    # =====================================================
+    # SAVE FINAL EXCEL
+    # =====================================================
 
     final_output = io.BytesIO()
 
@@ -1077,14 +1162,26 @@ def get_excel():
 # DOWNLOAD BUTTON
 # =========================================================
 
+st.markdown("---")
+
 st.download_button(
-    f"📥 DOWNLOAD EXCEL + CHARTS - {len(final_df)} Records",
-    get_excel(),
-    file_name=f"Report_{len(final_df)}_Dashboard.xlsx",
+    label=(
+        f"📥 DOWNLOAD EXCEL + CHARTS "
+        f"- {len(final_df)} Records"
+    ),
+
+    data=get_excel(),
+
+    file_name=(
+        f"Report_{len(final_df)}_Dashboard.xlsx"
+    ),
+
     mime=(
         "application/vnd.openxmlformats-officedocument."
         "spreadsheetml.sheet"
     ),
+
     use_container_width=True,
+
     type="primary"
 )
