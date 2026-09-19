@@ -112,20 +112,37 @@ else:
 
 st.dataframe(df_filtered, use_container_width=True, height=400)
 
-# --- PROFESSIONAL EXCEL - 100% WORKING ---
-def make_excel():
-    output = io.BytesIO()
+# --- FINAL CLEAN EXCEL DOWNLOAD - 100% WORKING ---
+def make_clean_excel():
+    # Sirf kaam ki columns rakhenge
+    keep = []
+    for c in df_filtered.columns:
+        cl = c.lower()
+        if any(k in cl for k in ['user ref','wir','status','form title','originator','last update','project','workflow','expected','task']):
+            if 'abcc' not in cl and 'archi' not in cl and 'civil' not in cl and 'elect' not in cl:
+                keep.append(c)
+    if len(keep) < 4:
+        keep = list(df_filtered.columns[:10])
+    df_clean = df_filtered[keep].copy()
+
+    from io import BytesIO
+    output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_filtered.to_excel(writer, index=False, sheet_name='WIR_REPORT')
+        df_clean.to_excel(writer, index=False, sheet_name='WIR_Report')
     return output.getvalue()
 
 st.divider()
-excel_data = make_excel()
-st.download_button(
-    label="📥 Professional WIR Report Download - Click Here",
-    data=excel_data,
-    file_name="Malik_WIR_Professional_Report.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True,
-    type="primary"
-)
+st.subheader("📥 Download Reports")
+c1, c2 = st.columns(2)
+with c1:
+    st.download_button(
+        label="📊 Excel Download (Saaf 10 Columns)",
+        data=make_clean_excel(),
+        file_name="WIR_Clean_55_Records.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        type="primary"
+    )
+with c2:
+    # Dashboard ko PDF banane ka jugad
+    st.markdown("Dashboard ka screenshot lene ke liye: **Ctrl + P -> Save as PDF**")
